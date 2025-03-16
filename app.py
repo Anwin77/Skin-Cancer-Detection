@@ -16,7 +16,8 @@ CORS(app)  # Enable CORS for all routes
 custom_objects = {
     'ClassToken': ClassToken,
     'AddPositionEmbs': AddPositionEmbs,
-    'TransformerBlock': TransformerBlock
+    'TransformerBlock': TransformerBlock,
+    'Lambda': tf.keras.layers.Lambda
 }
 
 model = tf.keras.models.load_model('vit_model.keras', custom_objects=custom_objects, safe_mode=False)
