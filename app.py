@@ -1,3 +1,4 @@
+import os
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import tensorflow as tf
@@ -11,7 +12,7 @@ from vit_keras.layers import ClassToken, AddPositionEmbs, TransformerBlock
 from vit_keras import vit
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
+CORS(app)
 
 custom_objects = {
     'ClassToken': ClassToken,
@@ -20,7 +21,22 @@ custom_objects = {
     'Lambda': tf.keras.layers.Lambda
 }
 
-model = tf.keras.models.load_model('vit_model.keras', custom_objects=custom_objects, safe_mode=False)
+model_path = 'vit_model.keras'
+if not os.path.exists(model_path):
+    raise FileNotFoundError(f"Model file {model_path} not found")
+try:
+    model = tf.keras.models.load_model(
+        model_path, 
+        custom_objects=custom_objects, 
+        compile=False,  # Skip compilation to avoid Lambda layer issues
+        safe_mode=False
+    )
+    # Recompile the model if needed
+    model.compile(optimizer='adam', loss='categorical_crossentropy')
+    app.logger.info("Model loaded successfully")
+except Exception as e:
+    app.logger.error(f"Failed to load model: {str(e)}")
+    raise e
 
 def preprocess_image(image_data):
     img_bytes = base64.b64decode(image_data)
@@ -40,7 +56,7 @@ def predict():
         image_data = data['image']
         input_data = preprocess_image(image_data)
         prediction = model.predict(input_data)[0]
-        class_labels = ['akiec: Actinic keratoses', 'bcc: Basal cell carcinoma', 'bkl: Benign keratosis-like lesions', 'df: Dermatofibroma', 'mel: Melanoma (most dangerous)', 'nv: Melanocytic nevi', 'vasc: Vascular lesions']  
+        class_labels = ['akiec: Actinic keratoses', 'bcc: Basal cell carcinoma', 'bkl: Benign keratosis-like lesions', 'df: Dermatofibroma', 'mel: Melanoma', 'nv: Melanocytic nevi', 'vasc: Vascular lesions']
         result = {
             'probabilities': {label: float(prob) for label, prob in zip(class_labels, prediction)},
             'predicted_class': class_labels[np.argmax(prediction)]
