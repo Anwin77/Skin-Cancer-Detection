@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 import tensorflow as tf
 import tensorflow_addons as tfa
 import numpy as np
@@ -10,6 +11,7 @@ from vit_keras.layers import ClassToken, AddPositionEmbs, TransformerBlock
 from vit_keras import vit
 
 app = Flask(__name__)
+CORS(app)  # Enable CORS for all routes
 
 custom_objects = {
     'ClassToken': ClassToken,
@@ -17,7 +19,6 @@ custom_objects = {
     'TransformerBlock': TransformerBlock
 }
 
-# Load model with safe_mode=False to allow Lambda layer
 model = tf.keras.models.load_model('vit_model.keras', custom_objects=custom_objects, safe_mode=False)
 
 def preprocess_image(image_data):
@@ -52,4 +53,4 @@ def home():
     return "Skin Cancer Detection API is running!"
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    app.run(host='0.0.0.0', port=5000)
