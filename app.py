@@ -18,10 +18,8 @@ custom_objects = {
     'AddPositionEmbs': AddPositionEmbs,
     'TransformerBlock': TransformerBlock
 }
-model_path = 'vit_model.keras'
-if not os.path.exists(model_path):
-	raise FileNotFoundError(f"Model file {model_path} not found in {os.getcwd()}")
-model = tf.keras.models.load_model(model_path, custom_objects=custom_objects, safe_mode=False)
+
+model = tf.keras.models.load_model('vit_model.keras', custom_objects=custom_objects, safe_mode=False)
 
 def preprocess_image(image_data):
     img_bytes = base64.b64decode(image_data)
