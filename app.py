@@ -1,73 +1,71 @@
 import os
-from flask import Flask, request, jsonify
-from flask_cors import CORS
+import requests
 import tensorflow as tf
 import tensorflow_addons as tfa
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+import cv2
 import numpy as np
 from PIL import Image
+import vit_keras.vit
 import io
-import base64
-import cv2
-from vit_keras.layers import ClassToken, AddPositionEmbs, TransformerBlock
-from vit_keras import vit
 
 app = Flask(__name__)
 CORS(app)
 
-custom_objects = {
-    'ClassToken': ClassToken,
-    'AddPositionEmbs': AddPositionEmbs,
-    'TransformerBlock': TransformerBlock,
-    'Lambda': tf.keras.layers.Lambda
-}
+# Path to save the model
+MODEL_PATH = "vit_model.h5"
 
-model_path = 'vit_model.keras'
-if not os.path.exists(model_path):
-    raise FileNotFoundError(f"Model file {model_path} not found")
+
+# Load the model
 try:
     model = tf.keras.models.load_model(
-        model_path, 
-        custom_objects=custom_objects, 
-        compile=False,  # Skip compilation to avoid Lambda layer issues
-        safe_mode=False
+        MODEL_PATH,
+        custom_objects={
+		"Addons>FocalLoss": tfa.losses.SigmoidFocalCrossEntropy(),
+		"ExtractToken": lambda x: x[:,0]
+	},
+	safe_mode=False
     )
-    # Recompile the model if needed
-    model.compile(optimizer='adam', loss='categorical_crossentropy')
-    app.logger.info("Model loaded successfully")
+    print("Model loaded successfully!")
 except Exception as e:
-    app.logger.error(f"Failed to load model: {str(e)}")
+    print(f"Failed to load model: {e}")
     raise e
 
-def preprocess_image(image_data):
-    img_bytes = base64.b64decode(image_data)
-    img = Image.open(io.BytesIO(img_bytes)).convert('RGB')
-    img_cv = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
-    img_cv = cv2.resize(img_cv, (224, 224))
-    img_array = cv2.cvtColor(img_cv, cv2.COLOR_BGR2RGB) / 255.0
-    img_array = np.expand_dims(img_array, axis=0)
-    return img_array
+# Routes
+@app.route('/')
+def home():
+    return "Skin Cancer Detection API is running!"
 
 @app.route('/predict', methods=['POST'])
 def predict():
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file part'}), 400
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'No selected file'}), 400
+
     try:
-        data = request.get_json()
-        if not data or 'image' not in data:
-            return jsonify({'error': 'No image data provided'}), 400
-        image_data = data['image']
-        input_data = preprocess_image(image_data)
-        prediction = model.predict(input_data)[0]
-        class_labels = ['akiec: Actinic keratoses', 'bcc: Basal cell carcinoma', 'bkl: Benign keratosis-like lesions', 'df: Dermatofibroma', 'mel: Melanoma', 'nv: Melanocytic nevi', 'vasc: Vascular lesions']
+        # Read and preprocess the image
+        image = Image.open(io.BytesIO(file.read())).convert('RGB')
+        image = image.resize((224, 224))
+        image_array = np.array(image) / 255.0
+        image_array = np.expand_dims(image_array, axis=0)
+
+        # Make prediction
+        prediction = model.predict(image_array)
+        predicted_class = np.argmax(prediction[0])
+        confidence = float(prediction[0][predicted_class])
+
+        # Map the predicted class to a label (adjust based on your classes)
+        class_labels = ['akiec: Actinic keratoses', 'bcc: Basal cell carcinoma', 'bkl: Benign keratosis-like lesions', 'df: Dermatofibroma', 'mel: Melanoma (most dangerous)', 'nv: Melanocytic nevi', 'vase: Vascular lesions']  # Replace with your actual labels
         result = {
-            'probabilities': {label: float(prob) for label, prob in zip(class_labels, prediction)},
-            'predicted_class': class_labels[np.argmax(prediction)]
+            'predicted_class': class_labels[predicted_class],
+            'confidence': confidence
         }
         return jsonify(result)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-
-@app.route('/')
-def home():
-    return "Skin Cancer Detection API is running!"
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
